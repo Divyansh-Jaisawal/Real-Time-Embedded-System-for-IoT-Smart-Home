@@ -1,0 +1,94 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// Wi-Fi credentials
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// MQTT broker configuration
+const char* mqtt_server = "YOUR_MQTT_BROKER_IP";
+const int mqtt_port = 1883;
+const char* mqtt_user = "YOUR_MQTT_USERNAME";
+const char* mqtt_password = "YOUR_MQTT_PASSWORD";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// MQTT topics
+const char* temperature_topic = "home/temperature";
+const char* humidity_topic = "home/humidity";
+const char* light_control_topic = "home/light/control";
+const char* light_status_topic = "home/light/status";
+
+// Pin definitions
+const int temperature_pin = A0;
+const int humidity_pin = A1;
+const int light_pin = 5;
+
+void setup_wifi() {
+  delay(10);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  // Handle incoming MQTT messages
+  // Example: control lights based on received commands
+  if (strcmp(topic, light_control_topic) == 0) {
+    if (payload[0] == '1') {
+      digitalWrite(light_pin, HIGH);
+    } else if (payload[0] == '0') {
+      digitalWrite(light_pin, LOW);
+    }
+  }
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    if (client.connect("ESP8266Client", mqtt_user, mqtt_password)) {
+      Serial.println("connected");
+      client.subscribe(light_control_topic);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+  pinMode(light_pin, OUTPUT);
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // Read sensor data and publish to MQTT broker
+  float temperature = analogRead(temperature_pin) * 3.3 / 4095.0 * 100;
+  float humidity = analogRead(humidity_pin) * 3.3 / 4095.0 * 100;
+  client.publish(temperature_topic, String(temperature).c_str());
+  client.publish(humidity_topic, String(humidity).c_str());
+
+  // Add additional sensor readings and control logic as needed
+  delay(5000); // Adjust delay time as per requirement
+}
